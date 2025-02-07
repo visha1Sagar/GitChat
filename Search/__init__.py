@@ -1,9 +1,9 @@
-from typing import Dict
+from typing import Dict, List
 import pandas as pd
 from Search.rank_fusion import RankFuser
 from Search.semantic_search import SemanticSearchEngine
 from Search.structured_query import StructuredQueryEngine
-
+import numpy as np
 
 class HybridSearchEngine:
     def __init__(self,

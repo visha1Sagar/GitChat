@@ -5,10 +5,13 @@ from DataIngestion.code_message_vectorizer import CodeMessageVectorizer
 from DataIngestion.issue_tracker_api import IssueTrackerAPI
 
 from DataIngestion.git_parser_history import GitHistoryParser
-
+import github
+import pygit
 from Search import HybridSearchEngine
 from Memory import MemoryModule
 from ResponseGenerator import ResponseGenerator
+from typing import List, Dict
+import re
 
 
 class GitChatSystem:
@@ -54,7 +57,8 @@ class GitChatSystem:
         if not os.path.isdir(os.path.join(self.repo_path, ".git")):
             raise ValueError("Not a valid Git repository")
 
-        remote_url = git.Repo(self.repo_path).remotes[0].config_reader.get("url")
+        # remote_url = git.Repo(self.repo_path).remotes[0].config_reader.get("url")
+        remote_url = pygit.load(self.repo_path).remotes[0].config_reader.get("url")
         return remote_url.replace(".git", "").split("github.com/")[-1]
 
     def ask_question(self, query: str):

@@ -1,5 +1,5 @@
 # git_history_parser.py
-import git
+import pygit
 import pandas as pd
 from datetime import datetime
 from typing import List, Dict
@@ -7,7 +7,7 @@ from typing import List, Dict
 
 class GitHistoryParser:
     def __init__(self, repo_path: str = "."):
-        self.repo = git.Repo(repo_path)
+        self.repo = pygit.load(repo_path)
 
     def parse_commit_history(self) -> pd.DataFrame:
         """Parse git commit history into structured DataFrame"""
