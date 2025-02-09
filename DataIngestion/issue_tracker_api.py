@@ -5,15 +5,16 @@ from datetime import datetime
 
 
 class IssueTrackerAPI:
-    def __init__(self, github_token: Optional[str] = None):
+    def __init__(self, github_token: Optional[str] = None, repo_name: str="visha1Sagar/GitChat"):
         self.github = Github(github_token)
+        self.repo = self.github.get_repo(repo_name)
 
     def fetch_repo_issues(self, repo_name: str) -> List[Dict]:
         """Fetch issues and discussions from a GitHub repository"""
-        repo = self.github.get_repo(repo_name)
+
         issues = []
 
-        for issue in repo.get_issues(state="all"):
+        for issue in self.repo.get_issues(state="all"):
             issue_data = {
                 "number": issue.number,
                 "title": issue.title,
