@@ -10,7 +10,7 @@ class ResponseGenerator:
 
     def _format_commit(self, commit: Dict) -> str:
         """Format commit information into natural language"""
-        date = datetime.fromisoformat(commit['date']).strftime("%b %Y")
+        date = commit['date'].to_pydatetime().strftime("%b %Y")
         files = ", ".join(commit['files_changed'][:3])
         message = textwrap.shorten(commit['message'], width=120, placeholder="...")
         return (f"Commit {commit['hash'][:6]} ({date}, {commit['author']}) - {message}\n"
@@ -45,7 +45,6 @@ class ResponseGenerator:
         # Add temporal context if available
         if temporal_context:
             response_parts.append(f"Context Update:\n{temporal_context}\n")
-
         # Process search results by type
         commits = []
         code_files = []
@@ -58,7 +57,7 @@ class ResponseGenerator:
         # Add commit information
         if commits:
             response_parts.append("Relevant Commit History:")
-            for commit in commits[:3]:  # Show top 3 commits
+            for commit in [commits[:3] if len(commits)>2 else commits][0]:  # Show top 3 commits
                 response_parts.append(self._format_commit(commit))
 
         # Add code references

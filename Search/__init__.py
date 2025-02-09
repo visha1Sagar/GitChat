@@ -17,7 +17,6 @@ class HybridSearchEngine:
     def search(self, query: str, query_vec: np.ndarray, top_k: int = 10) -> List[Dict]:
         # Structured search
         structured_results = self.structured_engine.search_commits(query)
-
         # Semantic search
         semantic_code = self.semantic_engine.search_code(query_vec)
         semantic_messages = self.semantic_engine.search_messages(query_vec)
