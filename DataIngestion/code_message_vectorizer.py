@@ -20,8 +20,8 @@ class CodeMessageVectorizer:
         """Convert code files to vectors, chunking large files."""
         vectors = {}
         code_files = Path(repo_path).rglob('*.*')
-
-        for file_path in code_files:
+        for i, file_path in enumerate(code_files):
+            print(f"{i} - Vectorizing file:", file_path)
             if file_path.is_file() and not file_path.name.startswith('.'):
                 try:
                     with open(file_path, 'r') as f:

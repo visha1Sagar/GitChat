@@ -25,9 +25,10 @@ class GitChatSystem:
         self.conversation_history = []
         print(f"Initialized GitChatSystem with repo_path: {repo_path} and github_token: {github_token}")
 
-    def initialize_system(self):
+    def initialize_system(self, github_token: str):
         """Initialize all components with current repo state"""
         try:
+            self.github_token = github_token
             print("Initializing system...")
             # DataIngestion
             if self.repo is not None:
@@ -92,7 +93,7 @@ class GitChatSystem:
             self.repo = git.Repo.clone_from(repo_url, "repo_directory")
             print(f"Cloned repository to repo_directory")
 
-            self.repo_path = os.path.join(os.getcwd(), repo_url.split("/")[-1])
+            self.repo_path = os.path.join(os.getcwd(), "repo_directory")
             print(f"Set repo_path to: {self.repo_path}")
             return "Repository downloaded successfully!"
         except Exception as e:
@@ -174,8 +175,8 @@ def create_interface():
 
         with gr.Row():
             with gr.Column(scale=1):
-                repo_path = gr.Textbox(label="Repository Path", value="https://github.com/kpolley/GitChat")
-                github_token = gr.Textbox(label="GitHub Token (optional)", type="password")
+                repo_path = gr.Textbox(label="Repository Path", value="https://github.com/visha1Sagar/GitChat")
+                github_token = gr.Textbox(label="GitHub Token find at https://github.com/settings/tokens/", type="password")
                 init_btn = gr.Button("Initialize System")
                 init_status = gr.Textbox(label="Initialization Status", interactive=False)
 
@@ -195,7 +196,7 @@ def create_interface():
 
         # Event handlers
         init_btn.click(
-            fn=lambda rp, gt: (system.download_repo(rp), system.initialize_system()),
+            fn=lambda rp, gt: (system.download_repo(rp), system.initialize_system(gt)),
             inputs=[repo_path, github_token],
             outputs=init_status
         )
