@@ -1,83 +1,89 @@
-# rank_fusion.py
-from typing import List, Dict, Tuple
-import pandas as pd
+# Search/rank_fusion.py
+from typing import List, Dict
+
+class RankFusion:
+    def __init__(self):
+        pass
+
+    def weighted_rank_fusion(self, structured_results: List[Dict], semantic_results: List[Dict], structured_weight: float, semantic_weight: float) -> List[Dict]:
+        """Simple weighted rank fusion (as before)"""
+        fused_results = []
+        structured_ranked_ids = {item['id']: i for i, item in enumerate(structured_results)}
+        semantic_ranked_ids = {item['id']: i for i, item in enumerate(semantic_results)}
+
+        for item in structured_results + semantic_results: # Iterate over all items to avoid missing any
+            if item not in fused_results: # Ensure no duplicates if an item appears in both lists.
+                fused_results.append(item)
+
+        for item in fused_results:
+            structured_rank = structured_ranked_ids.get(item['id'], len(structured_results)) # default to last rank if not found
+            semantic_rank = semantic_ranked_ids.get(item['id'], len(semantic_results)) # default to last rank if not found
+            item['fusion_score'] = (structured_weight * (1 - structured_rank/len(structured_results)) if structured_results else 0) + \
+                                   (semantic_weight * (1 - semantic_rank/len(semantic_results)) if semantic_results else 0)
+
+        fused_results.sort(key=lambda x: x['fusion_score'], reverse=True)
+        return fused_results
+
+    def borda_count_fusion(self, structured_results: List[Dict], semantic_results: List[Dict]) -> List[Dict]:
+        """Borda count rank fusion"""
+        fused_results = []
+        structured_ranked_ids = {item['id']: i for i, item in enumerate(structured_results)}
+        semantic_ranked_ids = {item['id']: i for i, item in enumerate(semantic_results)}
+
+        for item in structured_results + semantic_results: # Iterate over all items to avoid missing any
+            if item not in fused_results: # Ensure no duplicates if an item appears in both lists.
+                fused_results.append(item)
 
 
-class RankFuser:
-    def __init__(self, structured_weight: float = 0.7, semantic_weight: float = 0.3):
-        self.weights = {
-            'structured': structured_weight,
-            'semantic': semantic_weight
-        }
+        for item in fused_results:
+            structured_rank = structured_ranked_ids.get(item['id'], len(structured_results)) # default to last rank if not found
+            semantic_rank = semantic_ranked_ids.get(item['id'], len(semantic_results)) # default to last rank if not found
+            item['fusion_score'] = (len(structured_results) - structured_rank if structured_results else 0) + \
+                                   (len(semantic_results) - semantic_rank if semantic_results else 0) # Borda count is rank from bottom
 
-    def _normalize_scores(self, scores: List[float]) -> List[float]:
-        """Normalize scores to 0-1 range"""
-        if not scores:
-            return []
-        min_score = min(scores)
-        max_score = max(scores)
-        return [(s - min_score) / (max_score - min_score) for s in scores] if max_score != min_score else [0.5] * len(
-            scores)
+        fused_results.sort(key=lambda x: x['fusion_score'], reverse=True)
+        return fused_results
 
-    def fuse_results(self,
-                     structured_results: pd.DataFrame,
-                     semantic_code_results: List[Tuple[str, float]],
-                     semantic_message_results: pd.DataFrame) -> List[Dict]:
-        """Combine results from multiple retrieval methods"""
-        fused = []
 
-        # Structure: {type: 'commit'/'code', id: hash/filepath, score: float}
+    def reciprocal_rank_fusion(self, structured_results: List[Dict], semantic_results: List[Dict], k=60) -> List[Dict]:
+        """Reciprocal rank fusion"""
+        fused_results = []
+        ranked_ids = {}
 
-        # Add structured commit results
-        if not structured_results.empty:
-            structured_scores = self._normalize_scores(
-                [1.0] * len(structured_results)  # Structured matches get full weight
-            )
-            for (_, row), score in zip(structured_results.iterrows(), structured_scores):
-                fused.append({
-                    'type': 'commit',
-                    'id': row['hash'],
-                    'score': score * self.weights['structured'],
-                    'source': 'structured',
-                    'data': row.to_dict()
-                })
+        for i, item in enumerate(structured_results):
+            ranked_ids[item['id']] = ranked_ids.get(item['id'], 0) + 1/(k + i + 1) # Add reciprocal rank from structured
 
-        # Add semantic code results
-        code_scores = self._normalize_scores([s[1] for s in semantic_code_results])
-        for (file_path, raw_score), norm_score in zip(semantic_code_results, code_scores):
-            fused.append({
-                'type': 'code',
-                'id': file_path,
-                'score': norm_score * self.weights['semantic'],
-                'source': 'semantic',
-                'data': {'file_path': file_path, 'similarity': raw_score}
-            })
+        for i, item in enumerate(semantic_results):
+            ranked_ids[item['id']] = ranked_ids.get(item['id'], 0) + 1/(k + i + 1) # Add reciprocal rank from semantic
 
-        # Add semantic message results
-        if not semantic_message_results.empty:
-            message_scores = self._normalize_scores(
-                semantic_message_results['similarity'].tolist()
-            )
-            for (_, row), score in zip(semantic_message_results.iterrows(), message_scores):
-                fused.append({
-                    'type': 'commit',
-                    'id': row['hash'],
-                    'score': score * self.weights['semantic'],
-                    'source': 'semantic',
-                    'data': row.to_dict()
-                })
 
-        # Group and merge duplicate items
-        merged = {}
-        for item in fused:
-            key = (item['type'], item['id'])
-            if key in merged:
-                merged[key]['score'] += item['score']
-                merged[key]['sources'].append(item['source'])
-            else:
-                merged[key] = {
-                    **item,
-                    'sources': [item['source']]
-                }
+        unique_item_ids = set(ranked_ids.keys()) # Get unique IDs
+        fused_results = []
+        for item_id in unique_item_ids:
+            # Find the original item (you might need to adjust this based on how 'item' is structured and where 'id' comes from in your original search results)
+            # Assuming 'id' is unique enough to identify the item across result types.
+            structured_item = next((item for item in structured_results if item['id'] == item_id), None)
+            semantic_item = next((item for item in semantic_results if item['id'] == item_id), None)
 
-        return sorted(merged.values(), key=lambda x: x['score'], reverse=True)
+            # Prioritize structured_item if available, else semantic_item. Adjust as needed.
+            original_item = structured_item if structured_item else semantic_item
+
+            if original_item: # Ensure item is found (should be unless there's an ID issue)
+                fused_item = original_item.copy() # Create a copy to avoid modifying original list.
+                fused_item['fusion_score'] = ranked_ids[item_id] # Assign fusion score
+                fused_results.append(fused_item)
+
+
+        fused_results.sort(key=lambda x: x['fusion_score'], reverse=True)
+        return fused_results
+
+    def fuse_ranks(self, structured_results: List[Dict], semantic_results: List[Dict], fusion_method: str = 'weighted', **kwargs) -> List[Dict]:
+        """Main fusion dispatcher"""
+        if fusion_method == 'weighted':
+            return self.weighted_rank_fusion(structured_results, semantic_results, kwargs.get('structured_weight', 0.7), kwargs.get('semantic_weight', 0.3))
+        elif fusion_method == 'borda':
+            return self.borda_count_fusion(structured_results, semantic_results)
+        elif fusion_method == 'reciprocal_rank':
+            return self.reciprocal_rank_fusion(structured_results, semantic_results, kwargs.get('k', 60)) # Default k=60 from literature
+        else:
+            raise ValueError(f"Unknown fusion method: {fusion_method}")
