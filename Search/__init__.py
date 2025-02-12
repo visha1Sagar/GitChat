@@ -2,6 +2,10 @@ from typing import List, Dict, Tuple
 import pandas as pd
 import numpy as np
 
+from Search.rank_fusion import RankFusion
+from Search.semantic_search import SemanticSearchEngine
+from Search.structured_query import StructuredQueryEngine
+
 
 class HybridSearchEngine:
     def __init__(self, commit_df: pd.DataFrame, code_vectors: Dict[str, np.ndarray], message_vectors: np.ndarray, issue_vectors: Dict[str, np.ndarray] = None):
@@ -14,24 +18,27 @@ class HybridSearchEngine:
             search_params = {}
 
         structured_results = self.structured_engine.search_commits(query)
-        semantic_code = self.semantic_engine.search_code(query_vec)
-        semantic_messages = self.semantic_engine.search_messages(query_vec)
-        semantic_issues = self.semantic_engine.search_issues(query_vec) if self.semantic_engine.issue_vectors is not None else []
+        semantic_code = self.semantic_engine.semantic_code_search(query_vec) # Corrected method name
+        semantic_messages = self.semantic_engine.semantic_commit_message_search(query_vec) # Corrected method name
+        semantic_issues = self.semantic_engine.semantic_issue_search(query_vec) if self.semantic_engine.issue_vectors is not None else [] # Corrected method name
 
         # Convert to List[Dict] with 'id', 'data', and 'score' keys
-        fused_structured = [{'id': res['hash'], 'data': res} for res in structured_results]
-        fused_semantic_code = [{'id': res[0], 'data': {'file_path': res[0], 'similarity': res[1]}, 'score': res[1]} for res in semantic_code]
-        fused_semantic_messages = [{'id': res['hash'], 'data': res, 'score': res['similarity']} for res in semantic_messages]
-        fused_semantic_issues = [{'id': res['number'], 'data': res, 'score': res['similarity']} for res in semantic_issues]
+        fused_structured = [{'id': res['hash'], 'data': res} for res in structured_results.to_dict('records')] # Convert DataFrame to list of dicts
+        fused_semantic_code = [{'id': res['id'], 'data': res['data'], 'score': res['score']} for res in semantic_code] # Corrected line - use keys
+        fused_semantic_messages = [{'id': res['id'], 'data': res['data'], 'score': res['score']} for res in semantic_messages] # Corrected line - use keys
+        fused_semantic_issues = [{'id': res['id'], 'data': res['data'], 'score': res['score']} for res in semantic_issues] # Corrected line - use keys
+
 
         # Fuse results
         fusion_method = search_params.get('fusion_method', 'weighted')
         fused_results = self.rank_fusion.fuse_ranks(
             fused_structured,
             fused_semantic_code + fused_semantic_messages + fused_semantic_issues,
-            fusion_method=fusion_method,
-            **search_params  # Pass other search parameters (weights, k) to RankFusion
+            fusion_method=fusion_method,  # Keep explicit fusion_method
+            **{k: v for k, v in search_params.items() if k != 'fusion_method'}  # Exclude fusion_method from kwargs
         )
+
+        print("fused_results : ",fused_results)
 
         # Extract original data and limit top-k results
         final_results = []
@@ -39,7 +46,7 @@ class HybridSearchEngine:
             final_results.append({
                 'type': self._get_result_type(item['data']),  # Determine type based on data
                 'data': item['data'],
-                'fusion_score': item['score'],  # Use the final fused score
+                'fusion_score': item['fusion_score'],  # Use the final fused score
                 'sources': item.get('sources', []) # Include source information
             })
 

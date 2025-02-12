@@ -75,7 +75,8 @@ class ResponseGenerator:
         # Add commit information
         if commits:
             response_parts.append("Relevant Commit History:")
-            for commit in [commits[:3] if len(commits)>2 else commits][0]:  # Show top 3 commits
+            for commit in [commits[:3] if len(commits)>2 else commits][0]:  # Show top 3 commits if there
+
                 response_parts.append(self._format_commit(commit))
 
         # Add code references

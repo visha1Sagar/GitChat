@@ -2,12 +2,14 @@
 from typing import Dict, List
 import numpy as np
 import faiss
+import pandas as pd # Import pandas
 
 class SemanticSearchEngine:
-    def __init__(self, code_vectors: Dict[str, np.ndarray], message_vectors: np.ndarray, issue_vectors=None):
+    def __init__(self, code_vectors: Dict[str, np.ndarray], message_vectors: np.ndarray, commit_df: pd.DataFrame, issue_vectors=None): # Add commit_df to constructor
         self.code_vectors = self._build_faiss_index(code_vectors)
         self.message_vectors = self._build_faiss_index_messages(message_vectors)
         self.issue_vectors = self._build_faiss_index_issues(issue_vectors) if issue_vectors is not None else None
+        self.commit_df = commit_df # Store commit_df
 
     def _build_faiss_index(self, code_vectors: Dict[str, np.ndarray]):
         index = faiss.IndexFlatIP(768)
@@ -44,9 +46,9 @@ class SemanticSearchEngine:
             if idx != -1:
                 file_path = self.code_vectors['file_paths'][idx]
                 results.append({
-                    'id': file_path,  # Added 'id' field
-                    'data': {'file_path': file_path, 'similarity': score},  # Added 'data' field
-                    'score': score  # Renamed 'similarity' to 'score'
+                    'id': file_path,
+                    'data': {'file_path': file_path, 'similarity': score},
+                    'score': score
                 })
         return results
 
@@ -58,13 +60,12 @@ class SemanticSearchEngine:
         results = []
         for idx, score in zip(I[0], D[0]):
             if idx != -1:
-                # Assuming commit_df is available in the HybridSearchEngine and accessible here.
-                # You'll need to adjust how you get the commit data based on the index.
-                commit_data = self.commit_df.iloc[idx].to_dict() if hasattr(self, 'commit_df') and not self.commit_df.empty and idx < len(self.commit_df) else {}  # Placeholder. Replace with your commit data retrieval.
+                # Now self.commit_df is correctly initialized and accessible
+                commit_data = self.commit_df.iloc[idx].to_dict() if hasattr(self, 'commit_df') and not self.commit_df.empty and idx < len(self.commit_df) else {}
                 results.append({
-                    'id': str(idx),  # Added 'id' (index as string)
-                    'data': commit_data,  # Added 'data' (commit data)
-                    'score': score  # Renamed 'similarity' to 'score'
+                    'id': str(idx),
+                    'data': commit_data,
+                    'score': score
                 })
         return results
 
@@ -76,12 +77,10 @@ class SemanticSearchEngine:
         results = []
         for idx, score in zip(I[0], D[0]):
             if idx != -1:
-                # Assuming issues are available and indexed in the same order as vectors.
-                # You'll need to adjust how you get the issue data based on the index.
-                issue_data = {} # Placeholder. Replace with your issue data retrieval.
+                issue_data = {} # Placeholder - You'll need to link back to issue data properly
                 results.append({
-                    'id': str(idx),  # Added 'id' (index as string)
-                    'data': issue_data,  # Added 'data' (issue data)
-                    'score': score  # Renamed 'similarity' to 'score'
+                    'id': str(idx),
+                    'data': issue_data,
+                    'score': score
                 })
         return results

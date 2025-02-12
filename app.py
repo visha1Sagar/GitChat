@@ -23,115 +23,134 @@ class GitChatSystem:
         self.github_token = ""
         self.initialized = False
         self.conversation_history = []
+        print(f"Initialized GitChatSystem with repo_path: {repo_path} and github_token: {github_token}")
 
     def initialize_system(self):
         """Initialize all components with current repo state"""
         try:
+            print("Initializing system...")
             # DataIngestion
             if self.repo is not None:
                 self.git_parser = GitHistoryParser(repo=self.repo)
+                print("Using existing repo for GitHistoryParser")
             else:
                 self.git_parser = GitHistoryParser(repo_url=self.repo_path)
+                print(f"Using repo_url: {self.repo_path} for GitHistoryParser")
 
             self.commit_df = self.git_parser.parse_commit_history()
+            print(f"Parsed commit history: {self.commit_df}")
 
             self.vectorizer = CodeMessageVectorizer()
-            self.code_vectors = self.vectorizer.vectorize_codebase(self.repo_path) # Get chunked code vectors
+            self.code_vectors = self.vectorizer.vectorize_codebase(self.repo_path)
+            print(f"Vectorized codebase: {self.code_vectors}")
+
             self.message_vectors = self.vectorizer.vectorize_commit_messages(
                 self.commit_df["message"].tolist()
             )
+            print(f"Vectorized commit messages: {self.message_vectors}")
 
             self.issue_tracker = IssueTrackerAPI(self.github_token)
             repo_name = self._extract_repo_name()
+            print(f"Extracted repo name: {repo_name}")
             self.issues = self.issue_tracker.fetch_repo_issues(repo_name)
-            issue_vectors_for_search = [issue['vector'] for issue in self.issues] if self.issues else None # Extract issue vectors for search engine.
-
+            print(f"Fetched repo issues: {self.issues}")
+            issue_vectors_for_search = [issue['vector'] for issue in self.issues] if self.issues else None
+            print(f"Issue vectors for search: {issue_vectors_for_search}")
 
             # Search Engine
             self.search_engine = HybridSearchEngine(
-                self.commit_df, self.code_vectors, self.message_vectors, issue_vectors=issue_vectors_for_search # Pass issue vectors
+                self.commit_df, self.code_vectors, self.message_vectors, issue_vectors=issue_vectors_for_search
             )
+            print("Initialized HybridSearchEngine")
 
             # Memory and Response
             self.memory = MemoryModule(self.commit_df)
             self.response_gen = ResponseGenerator(self.issues)
+            print("Initialized MemoryModule and ResponseGenerator")
 
             self.initialized = True
+            print("System initialized successfully!")
             return "System initialized successfully!"
         except Exception as e:
+            print(f"Initialization failed: {str(e)}")
             return f"Initialization failed: {str(e)}"
 
     def download_repo(self, repo_url: str):
         """Download a GitHub repository to local disk"""
-        if repo_url[-4:]!= ".git":
-            repo_url+=".git"
+        print(f"Downloading repository from URL: {repo_url}")
+        if repo_url[-4:] != ".git":
+            repo_url += ".git"
 
-        # if "repo_direcotry" isnt empty then make it empty
         if os.path.exists("repo_directory"):
             def remove_readonly(func, path, _):
                 os.chmod(path, stat.S_IWRITE)
                 func(path)
             shutil.rmtree("repo_directory", onerror=remove_readonly)
+            print("Cleared existing repo_directory")
 
         try:
-            # Clone the repository
-            # github.Github(self.github_token).get_repo(repo_url).clone()
             self.repo = git.Repo.clone_from(repo_url, "repo_directory")
+            print(f"Cloned repository to repo_directory")
 
             self.repo_path = os.path.join(os.getcwd(), repo_url.split("/")[-1])
+            print(f"Set repo_path to: {self.repo_path}")
             return "Repository downloaded successfully!"
         except Exception as e:
+            print(f"Repository download failed: {str(e)}")
             return f"Repository download failed: {str(e)}"
-
 
     def _extract_repo_name(self) -> str:
         """Convert local path to github repo name format"""
         if not os.path.exists("repo_directory"):
-            return ValueError("Not a valid Git repository")
+            raise ValueError("Not a valid Git repository")
 
-        # remote_url = git.Repo(self.repo_path).remotes[0].config_reader.get("url")
         remote_url = self.repo.remotes[0].config_reader.get("url")
+        print(f"Extracted remote URL: {remote_url}")
         return remote_url.replace(".git", "").split("github.com/")[-1]
 
     def ask_question(self, query: str):
         """Main processing pipeline"""
         if not self.initialized:
+            print("System not initialized!")
             return "System not initialized!", []
 
         try:
-            # Process query
+            print(f"Processing query: {query}")
             query_vec = self.vectorizer.model.encode([query])[0]
+            print(f"Encoded query vector: {query_vec}")
 
-            # Search
-            search_results = self.search_engine.search(query, query_vec, search_params={ # Example search_params
-                'fusion_method': 'reciprocal_rank', # Try reciprocal rank fusion - experiment with 'borda', 'weighted'
-                'structured_weight': 0.6, # Adjust weights as needed for weighted fusion if you use it.
+            search_results = self.search_engine.search(query, query_vec, search_params={
+                'fusion_method': 'reciprocal_rank',
+                'structured_weight': 0.6,
                 'semantic_weight': 0.4,
                 'top_k': 10
             })
-            # Get temporal context
+            print(f"Search results: {search_results}")
+
             temporal_context = self.memory.get_context()
-            # Find related issues
+            print(f"Temporal context: {temporal_context}")
+
             issue_refs = self._find_related_issues(search_results)
-            # Generate response
+            print(f"Related issues: {issue_refs}")
+
             response = self.response_gen.generate_response(
                 search_results, temporal_context, issue_refs
             )
+            print(f"Generated response: {response}")
 
-            # Update memory
             self.memory.add_conversation(query, response)
+            print("Updated memory with new conversation")
 
             response = str(response)
-
             self.conversation_history.extend([
                 {"role": "user", "content": query},
                 {"role": "assistant", "content": response}
             ])
+            print(f"Updated conversation history: {self.conversation_history}")
 
             return self.conversation_history, ""
-
-
         except Exception as e:
+            print(f"Error: {e}")
             error_response = self.response_gen.generate_error_response(e)
             self.conversation_history.append({"role": "assistant", "content": error_response})
             return self.conversation_history, ""
@@ -143,8 +162,8 @@ class GitChatSystem:
             if result['type'] == 'commit':
                 message = result['data'].get('message', '')
                 issue_numbers.update(re.findall(r"#(\d+)", message))
-        return list(issue_numbers)[:3]  # Return top 3 matches
-
+        print(f"Extracted issue numbers: {issue_numbers}")
+        return list(issue_numbers)[:3]
 
 # Gradio Interface (no major changes needed right now)
 def create_interface():
