@@ -113,8 +113,8 @@ class GitChatSystem:
         """Main processing pipeline"""
         if not self.initialized:
             print("System not initialized!")
-            return "System not initialized!", []
-
+            #     {"role": "assistant", "content": error_response}
+            return self.conversation_history, "System not initialized!"
         try:
             print(f"Processing query: {query}")
             query_vec = self.vectorizer.model.encode([query])[0]
