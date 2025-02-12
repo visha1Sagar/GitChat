@@ -3,7 +3,6 @@ import gradio as gr
 import os
 from DataIngestion.code_message_vectorizer import CodeMessageVectorizer
 from DataIngestion.issue_tracker_api import IssueTrackerAPI
-
 from DataIngestion.git_parser_history import GitHistoryParser
 import github
 import git
@@ -12,7 +11,6 @@ from Memory import MemoryModule
 from ResponseGenerator import ResponseGenerator
 from typing import List, Dict
 import re
-
 import os
 import shutil
 import stat
@@ -38,7 +36,7 @@ class GitChatSystem:
             self.commit_df = self.git_parser.parse_commit_history()
 
             self.vectorizer = CodeMessageVectorizer()
-            self.code_vectors = self.vectorizer.vectorize_codebase(self.repo_path)
+            self.code_vectors = self.vectorizer.vectorize_codebase(self.repo_path) # Get chunked code vectors
             self.message_vectors = self.vectorizer.vectorize_commit_messages(
                 self.commit_df["message"].tolist()
             )
@@ -46,10 +44,12 @@ class GitChatSystem:
             self.issue_tracker = IssueTrackerAPI(self.github_token)
             repo_name = self._extract_repo_name()
             self.issues = self.issue_tracker.fetch_repo_issues(repo_name)
+            issue_vectors_for_search = [issue['vector'] for issue in self.issues] if self.issues else None # Extract issue vectors for search engine.
+
 
             # Search Engine
             self.search_engine = HybridSearchEngine(
-                self.commit_df, self.code_vectors, self.message_vectors
+                self.commit_df, self.code_vectors, self.message_vectors, issue_vectors=issue_vectors_for_search # Pass issue vectors
             )
 
             # Memory and Response
@@ -71,7 +71,6 @@ class GitChatSystem:
             def remove_readonly(func, path, _):
                 os.chmod(path, stat.S_IWRITE)
                 func(path)
-
             shutil.rmtree("repo_directory", onerror=remove_readonly)
 
         try:
@@ -103,9 +102,13 @@ class GitChatSystem:
             # Process query
             query_vec = self.vectorizer.model.encode([query])[0]
 
-
             # Search
-            search_results = self.search_engine.search(query, query_vec)
+            search_results = self.search_engine.search(query, query_vec, search_params={ # Example search_params
+                'fusion_method': 'reciprocal_rank', # Try reciprocal rank fusion - experiment with 'borda', 'weighted'
+                'structured_weight': 0.6, # Adjust weights as needed for weighted fusion if you use it.
+                'semantic_weight': 0.4,
+                'top_k': 10
+            })
             # Get temporal context
             temporal_context = self.memory.get_context()
             # Find related issues
@@ -117,9 +120,6 @@ class GitChatSystem:
 
             # Update memory
             self.memory.add_conversation(query, response)
-            # Format conversation history
-            # self.conversation_history.append((query, response))
-            # history_md = self._format_history_markdown()
 
             response = str(response)
 
@@ -128,12 +128,10 @@ class GitChatSystem:
                 {"role": "assistant", "content": response}
             ])
 
-            # Return: (full_history, clear_query_input)
             return self.conversation_history, ""
 
 
         except Exception as e:
-
             error_response = self.response_gen.generate_error_response(e)
             self.conversation_history.append({"role": "assistant", "content": error_response})
             return self.conversation_history, ""
@@ -147,15 +145,8 @@ class GitChatSystem:
                 issue_numbers.update(re.findall(r"#(\d+)", message))
         return list(issue_numbers)[:3]  # Return top 3 matches
 
-    def _format_history_markdown(self) -> str:
-        """Format conversation history for display"""
-        md = []
-        for i, (query, response) in enumerate(self.conversation_history[-5:]):  # Last 5 exchanges
-            md.append(f"**Q{i + 1}:** {query}  \n**A{i + 1}:** {response}\n")
-        return "\n".join(md)
 
-
-# Gradio Interface
+# Gradio Interface (no major changes needed right now)
 def create_interface():
     system = GitChatSystem()
 
@@ -177,8 +168,9 @@ def create_interface():
         with gr.Accordion("Advanced Options", open=False):
             gr.Markdown("Configure search parameters:")
             search_params = gr.JSON(value={
-                "structured_weight": 0.7,
-                "semantic_weight": 0.3,
+                "fusion_method": "reciprocal_rank", # Default to reciprocal_rank now. Can change in UI later.
+                "structured_weight": 0.6, # Example weights for reciprocal rank might not be as relevant, adjust if using weighted.
+                "semantic_weight": 0.4,
                 "top_k": 10
             })
 
